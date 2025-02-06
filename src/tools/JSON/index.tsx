@@ -54,7 +54,6 @@ const JsonNode = ({ data, level, searchTerm, expanded, toggleExpand, path, onPat
     
     const parts = text.toString().split(new RegExp(`(${searchTerm})`, 'gi'));
     const isSelected = `${path}.${text}` === selectedPath;
-    console.log(path, selectedPath);
     const highlightClass = isSelected ? "text-cyan-800" : "";
     
     return parts.map((part, i) => {
