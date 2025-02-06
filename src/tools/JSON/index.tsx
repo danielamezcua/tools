@@ -2,15 +2,13 @@ import '@/styles/globals.css';
 import React, { useState, useCallback, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Search, ChevronLeft, ChevronRight, AlertTriangle, PlusCircle, MinusCircle } from 'lucide-react';
+import { ArrowUpDown, Search, Check, ChevronLeft, ChevronRight, Copy, AlertTriangle, PlusCircle, MinusCircle } from 'lucide-react';
 import { createRoot } from 'react-dom/client';
 
 type SearchMatch = {
   index: number;
   text: string;
 };
-
-
 
 type FixResult = {
   fixed: boolean;
@@ -26,36 +24,60 @@ const isValidUrl = (string: string): boolean => {
   }
 };
 
-const JsonNode = ({ data, level, searchTerm, expanded, toggleExpand, path }) => {
+const JsonNode = ({ data, level, searchTerm, expanded, toggleExpand, path, onPathClick, selectedPath }) => {
+  const [isSorted, setIsSorted] = useState(false);
   const isExpanded = expanded.has(path);
   const indent = "ml-4";
 
-  const highlightText = (text) => {
-    if (!searchTerm) return text;
-    const parts = text.toString().split(new RegExp(`(${searchTerm})`, 'gi'));
-    return parts.map((part, i) => 
-      part.toLowerCase() === searchTerm.toLowerCase() ? 
-        <span key={i} className="bg-yellow-500 text-black">{part}</span> : 
-        part
-    );
+  const toggleSort = (e) => {
+    e.stopPropagation();
+    setIsSorted(!isSorted);
   };
 
-  // Updated formatValue function to handle URLs
+  const handleExpandClick = (e) => {
+    e.stopPropagation();
+    toggleExpand(path);
+  };
+
+  const handleClick = (e) => {
+    e.stopPropagation();
+    onPathClick(path);
+  };
+
+  const handleKeyClick = (e, keyPath) => {
+    e.stopPropagation();
+    onPathClick(keyPath);
+  };
+
+  const highlightText = (text, isKey = false) => {
+    if (!searchTerm && !isKey) return text;
+    
+    const parts = text.toString().split(new RegExp(`(${searchTerm})`, 'gi'));
+    const isSelected = `${path}.${text}` === selectedPath;
+    console.log(path, selectedPath);
+    const highlightClass = isSelected ? "text-cyan-800" : "";
+    
+    return parts.map((part, i) => {
+      if (part.toLowerCase() === searchTerm?.toLowerCase()) {
+        return <span key={i} className="bg-yellow-500 text-black">{part}</span>;
+      }
+      return <span key={i} className={isKey ? highlightClass : ""}>{part}</span>;
+    });
+  };
+
   const formatValue = (value) => {
     if (typeof value === 'string' && isValidUrl(value)) {
       return (
-        <a 
-          href={value}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="underline hover:text-gray-700 dark:hover:text-gray-300 transition-colors"
-        >
+        <a href={value} target="_blank" rel="noopener noreferrer" 
+           className="underline hover:text-gray-700 dark:hover:text-gray-300 transition-colors">
           {highlightText(String(value))}
         </a>
       );
-    } else if (typeof value === 'number') {
+    } 
+    if (typeof value === 'number') {
       return <span className="text-purple-500">{highlightText(String(value))}</span>;
-    } else if (typeof value === 'boolean') {
+    }
+    if (typeof value === 'boolean') {
       return <span className="italic text-orange-500">{highlightText(String(value))}</span>;
     }
     return <span className="text-foreground">{highlightText(String(value))}</span>;
@@ -63,13 +85,13 @@ const JsonNode = ({ data, level, searchTerm, expanded, toggleExpand, path }) => 
 
   if (Array.isArray(data)) {
     return (
-      <div>
+      <div onClick={handleClick}>
         <div className="flex items-center">
           <div className="flex items-center">
             <span className="text-foreground text-lg font-extrabold leading-none">{highlightText("[")}</span>
             <button
               className="inline-flex items-center hover:bg-gray-100 dark:hover:bg-gray-800 rounded px-1"
-              onClick={() => toggleExpand(path)}
+              onClick={handleExpandClick} 
             >
               {isExpanded ? 
                 <MinusCircle className="h-4 w-4 mr-1" /> : 
@@ -82,32 +104,39 @@ const JsonNode = ({ data, level, searchTerm, expanded, toggleExpand, path }) => 
         </div>
         {isExpanded && (
           <div className={indent}>
-            {data.map((item, index) => (
-              <div key={index} className="flex">
-                <span className="text-gray-500 font-semibold">{index}: </span>
-                <JsonNode 
-                  data={item}
-                  level={level + 1}
-                  searchTerm={searchTerm}
-                  expanded={expanded}
-                  toggleExpand={toggleExpand}
-                  path={`${path}.${index}`}
-                />
-              </div>
-            ))}
+            {Object.entries(data)
+              .sort(([a], [b]) => isSorted ? a.localeCompare(b) : 0)
+              .map(([key, value]) => (
+                <div key={key} className="flex">
+                  <span className="text-foreground font-black mr-2 cursor-pointer"
+                        onClick={(e) => handleKeyClick(e, `${path}.${key}`)}>
+                    {highlightText(key, true)}: 
+                  </span>
+                  <JsonNode 
+                    data={value}
+                    level={level + 1}
+                    searchTerm={searchTerm}
+                    expanded={expanded}
+                    toggleExpand={toggleExpand}
+                    path={`${path}.${key}`}
+                    onPathClick={onPathClick}
+                    selectedPath={selectedPath}
+                  />
+                </div>
+              ))}
           </div>
         )}
       </div>
     );
   } else if (typeof data === 'object' && data !== null) {
-    return (
-      <div>
+     return (
+      <div onClick={handleClick}>
         <div className="flex items-center">
           <div className="flex items-center">
             <span className="text-foreground text-lg font-extrabold leading-none">{highlightText("{")}</span>
             <button
               className="inline-flex items-center hover:bg-gray-100 dark:hover:bg-gray-800 rounded px-1"
-              onClick={() => toggleExpand(path)}
+              onClick={handleExpandClick}
             >
               {isExpanded ? 
                 <MinusCircle className="h-4 w-4 mr-1" /> : 
@@ -115,24 +144,37 @@ const JsonNode = ({ data, level, searchTerm, expanded, toggleExpand, path }) => 
               }
               {Object.keys(data).length}
             </button>
+            <button
+              className="inline-flex items-center hover:bg-gray-100 dark:hover:bg-gray-800 rounded px-1 ml-1"
+              onClick={toggleSort}
+            >
+              <ArrowUpDown className={`h-4 w-4 ${isSorted ? 'text-blue-500' : ''}`} />
+            </button>
             <span className="text-foreground text-lg font-extrabold leading-none">{"}"}</span>
           </div>
         </div>
         {isExpanded && (
           <div className={indent}>
-            {Object.entries(data).map(([key, value]) => (
-              <div key={key} className="flex">
-                <span className="text-foreground font-black">{highlightText(key)}: </span>
-                <JsonNode 
-                  data={value}
-                  level={level + 1}
-                  searchTerm={searchTerm}
-                  expanded={expanded}
-                  toggleExpand={toggleExpand}
-                  path={`${path}.${key}`}
-                />
-              </div>
-            ))}
+            {Object.entries(data)
+              .sort(([a], [b]) => isSorted ? a.localeCompare(b) : 0)
+              .map(([key, value]) => (
+                <div key={key} className="flex">
+                  <span className="text-foreground font-black mr-2 cursor-pointer"
+                        onClick={(e) => handleKeyClick(e, `${path}.${key}`)}>
+                    {highlightText(key, true)}: 
+                  </span>
+                  <JsonNode 
+                    data={value}
+                    level={level + 1}
+                    searchTerm={searchTerm}
+                    expanded={expanded}
+                    toggleExpand={toggleExpand}
+                    path={`${path}.${key}`}
+                    onPathClick={onPathClick}
+                    selectedPath={selectedPath}
+                  />
+                </div>
+              ))}
           </div>
         )}
       </div>
@@ -141,6 +183,45 @@ const JsonNode = ({ data, level, searchTerm, expanded, toggleExpand, path }) => 
   
   return formatValue(data);
 };
+
+const formatPythonPath = (path) => {
+  if (!path || path === 'root') return 'data';
+  return 'data' + path.split('.').slice(1).map(part => {
+    return !isNaN(part) ? `[${part}]` : `["${part}"]`
+  }).join('');
+};
+
+const CopyButton = ({ text }) => {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = async () => {
+    await navigator.clipboard.writeText(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <button
+      onClick={handleCopy}
+      className="ml-2 p-2 hover:bg-gray-200 dark:hover:bg-gray-300 rounded inline-flex items-center bg-white dark:text-black"
+    >
+      {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4 font-bold" />}
+    </button>
+  );
+};
+
+const PathDisplay = ({ path }) => {
+  const formattedPath = formatPythonPath(path);
+  return (
+    <div className="flex items-center w-full overflow-hidden text-sm text-foreground font-mono px-2 py-1 rounded mb-2">
+      <div className="overflow-x-auto whitespace-nowrap scrollbar-hide flex-1">
+        <code className="block">{formattedPath}</code>
+      </div>
+      <CopyButton text={formattedPath} />
+    </div>
+  );
+};
+
 
 
 const JSONViewer: React.FC = () => {
@@ -152,7 +233,7 @@ const JSONViewer: React.FC = () => {
   const [matches, setMatches] = useState<SearchMatch[]>([]);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [fixResults, setFixResults] = useState<FixResult[]>([]);
-
+  const [selectedPath, setSelectedPath] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const fixJson = (input: string): { text: string; fixes: FixResult[]; errorPosition?: number } => {
@@ -300,24 +381,9 @@ const JSONViewer: React.FC = () => {
     setExpanded(newExpanded);
   };
 
-  const expandAll = () => {
-    const newExpanded = new Set<string>();
-    const addAllPaths = (obj: any, path: string = '') => {
-      if (typeof obj !== 'object' || obj === null) return;
-      newExpanded.add(path);
-      if (Array.isArray(obj)) {
-        obj.forEach((item, index) => addAllPaths(item, `${path}.${index}`));
-      } else {
-        Object.entries(obj).forEach(([key, value]) => addAllPaths(value, `${path}.${key}`));
-      }
-    };
-    addAllPaths(parsedJson);
-    setExpanded(newExpanded);
-  };
-
-  const collapseAll = () => {
-    setExpanded(new Set());
-  };
+  const handlePathClick = (path) => {
+    setSelectedPath(path);
+  };  
 
   const navigateSearch = (direction: 'next' | 'prev') => {
     if (matches.length === 0) return;
@@ -331,17 +397,17 @@ const JSONViewer: React.FC = () => {
  return (
     <div className="dark flex items-center justify-center min-h-screen bg-background p-4">
       <Card className="w-full max-w-3xl flex flex-col max-h-[90vh]">
-        <CardHeader className="flex flex-row items-center justify-between">
+        <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between space-y-2 sm:space-y-0">
           <CardTitle className="text-foreground text-3xl font-bold">JSON viewer</CardTitle>
-          <div className="flex items-center space-x-2">
-            <div className="relative">
+          <div className="flex items-center space-x-2 w-full sm:w-auto">
+            <div className="relative flex-1 sm:flex-initial">
               <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-500" />
               <input
                 type="text"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 placeholder="Search..."
-                className="pl-8 pr-4 py-1 rounded border dark:bg-gray-800 dark:border-gray-700"
+                className="w-full sm:w-auto pl-8 pr-4 py-1 rounded border dark:bg-gray-800 dark:border-gray-700"
               />
               {matches.length > 0 && (
                 <div className="flex items-center ml-2 space-x-2">
@@ -364,9 +430,9 @@ const JSONViewer: React.FC = () => {
               )}
             </div>
           </div>
-        </CardHeader>
+        </CardHeader> 
         <CardContent className="flex flex-col min-h-0">
-
+          
           {/* Rest of the component remains the same */}
           <textarea
             ref={textareaRef}
@@ -396,6 +462,7 @@ const JSONViewer: React.FC = () => {
               <AlertDescription>{error}</AlertDescription>
             </Alert>
           )}
+          {selectedPath && <PathDisplay path={selectedPath} />}
           <div className="overflow-auto flex-1 font-mono text-sm">
             {parsedJson && (
               <JsonNode
@@ -405,6 +472,8 @@ const JSONViewer: React.FC = () => {
                 expanded={expanded}
                 toggleExpand={toggleExpand}
                 path="root"
+                onPathClick={handlePathClick}
+                selectedPath={selectedPath}
               />
             )}
           </div>
