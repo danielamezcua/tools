@@ -22,6 +22,8 @@ type Comet = {
 
 const CozySky: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const moonAngleRef = useRef<number>(0);
+  const mouseRef = useRef<{ x: number; y: number; active: boolean }>({ x: 0, y: 0, active: false });
 
   const grid = useMemo(() => ({ w: 160, h: 90 }), []); // 16:9 logical pixels
 
@@ -45,15 +47,15 @@ const CozySky: React.FC = () => {
     const bctx = buffer.getContext('2d')!;
     bctx.imageSmoothingEnabled = false;
 
-    // Moon parameters (fixed)
+    // Moon parameters (fixed center/radius; rotation via angle ref)
     const moon = {
       cx: Math.floor(grid.w * 0.72),
       cy: Math.floor(grid.h * 0.28),
       r: Math.floor(Math.min(grid.w, grid.h) * 0.22)
     };
 
-    // Precompute crater seeds
-    type Crater = { x: number; y: number; r: number };
+    // Precompute crater seeds (relative offsets)
+    type Crater = { ox: number; oy: number; r: number };
     const craters: Crater[] = (() => {
       const out: Crater[] = [];
       const rand = (seed: number) => {
@@ -68,10 +70,10 @@ const CozySky: React.FC = () => {
       for (let i = 0; i < count; i++) {
         const angle = r() * Math.PI * 2;
         const radius = moon.r * (0.15 + r() * 0.6);
-        const x = Math.floor(moon.cx + Math.cos(angle) * radius);
-        const y = Math.floor(moon.cy + Math.sin(angle) * radius);
+        const ox = Math.cos(angle) * radius;
+        const oy = Math.sin(angle) * radius;
         const rr = Math.max(1, Math.floor(2 + r() * 3));
-        out.push({ x, y, r: rr });
+        out.push({ ox, oy, r: rr });
       }
       return out;
     })();
@@ -103,12 +105,18 @@ const CozySky: React.FC = () => {
         }
       }
       // Craters (simple darker spots)
+      const ang = moonAngleRef.current;
+      const cosA = Math.cos(ang);
+      const sinA = Math.sin(ang);
       for (const c of craters) {
-        for (let y = c.y - c.r; y <= c.y + c.r; y++) {
-          for (let x = c.x - c.r; x <= c.x + c.r; x++) {
+        // Rotate offset and translate
+        const cx = Math.floor(moon.cx + c.ox * cosA - c.oy * sinA);
+        const cy = Math.floor(moon.cy + c.ox * sinA + c.oy * cosA);
+        for (let y = cy - c.r; y <= cy + c.r; y++) {
+          for (let x = cx - c.r; x <= cx + c.r; x++) {
             if (x < 0 || y < 0 || x >= grid.w || y >= grid.h) continue;
-            const dx = x - c.x;
-            const dy = y - c.y;
+            const dx = x - cx;
+            const dy = y - cy;
             if (dx * dx + dy * dy <= c.r * c.r && insideMoon(x, y)) {
               const edge = Math.abs(Math.sqrt(dx * dx + dy * dy) - c.r) < 0.8;
               bctx.globalAlpha = edge ? 0.35 : 0.25;
@@ -233,6 +241,21 @@ const CozySky: React.FC = () => {
       // Draw and update comets
       const nextComets: Comet[] = [];
       for (const c of comets) {
+        // Mouse gravity (subtle deflection when near)
+        if (mouseRef.current.active) {
+          const mx = mouseRef.current.x;
+          const my = mouseRef.current.y;
+          const dxm = mx - c.x;
+          const dym = my - c.y;
+          const dist = Math.hypot(dxm, dym);
+          if (dist < 20) {
+            const strength = (1 - dist / 20) * 0.03; // subtle
+            const ux = dxm / (dist || 1);
+            const uy = dym / (dist || 1);
+            c.dx += ux * strength;
+            c.dy += uy * strength;
+          }
+        }
         // Tail
         for (let i = 0; i < c.length; i++) {
           const px = Math.round(c.x - c.dx * i);
@@ -272,8 +295,42 @@ const CozySky: React.FC = () => {
       raf = requestAnimationFrame(loop);
     };
 
+    // Mouse interactions
+    const handleMouseMove = (e: MouseEvent) => {
+      const rect = canvas.getBoundingClientRect();
+      const sx = grid.w / rect.width;
+      const sy = grid.h / rect.height;
+      mouseRef.current.x = (e.clientX - rect.left) * sx;
+      mouseRef.current.y = (e.clientY - rect.top) * sy;
+      mouseRef.current.active = true;
+    };
+    const handleMouseLeave = () => {
+      mouseRef.current.active = false;
+    };
+    const handleClick = (e: MouseEvent) => {
+      const rect = canvas.getBoundingClientRect();
+      const sx = grid.w / rect.width;
+      const sy = grid.h / rect.height;
+      const x = (e.clientX - rect.left) * sx;
+      const y = (e.clientY - rect.top) * sy;
+      const dx = x - moon.cx;
+      const dy = y - moon.cy;
+      if (dx * dx + dy * dy <= moon.r * moon.r) {
+        moonAngleRef.current += Math.PI / 12; // rotate ~15° per click
+      }
+    };
+
+    canvas.addEventListener('mousemove', handleMouseMove);
+    canvas.addEventListener('mouseleave', handleMouseLeave);
+    canvas.addEventListener('click', handleClick);
+
     raf = requestAnimationFrame(loop);
-    return () => cancelAnimationFrame(raf);
+    return () => {
+      cancelAnimationFrame(raf);
+      canvas.removeEventListener('mousemove', handleMouseMove);
+      canvas.removeEventListener('mouseleave', handleMouseLeave);
+      canvas.removeEventListener('click', handleClick);
+    };
   }, [grid]);
 
   return (
