@@ -49,7 +49,7 @@ const CozySky: React.FC = () => {
     const moon = {
       cx: Math.floor(grid.w * 0.72),
       cy: Math.floor(grid.h * 0.28),
-      r: Math.floor(Math.min(grid.w, grid.h) * 0.32)
+      r: Math.floor(Math.min(grid.w, grid.h) * 0.22)
     };
 
     // Precompute crater seeds
