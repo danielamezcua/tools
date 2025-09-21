@@ -25,6 +25,27 @@ const getToolEntries = () => {
   return entries;
 };
 
+const getToolMetadata = (toolName) => {
+  const toolsDir = path.join(__dirname, 'src/tools');
+  const metadataPath = path.join(toolsDir, toolName, 'metadata.json');
+  
+  if (fs.existsSync(metadataPath)) {
+    try {
+      const metadata = JSON.parse(fs.readFileSync(metadataPath, 'utf8'));
+      return metadata;
+    } catch (error) {
+      console.warn(`Failed to parse metadata for tool ${toolName}:`, error.message);
+    }
+  }
+  
+  // Fallback to default metadata
+  return {
+    title: toolName.charAt(0).toUpperCase() + toolName.slice(1),
+    description: `${toolName} tool`,
+    keywords: [toolName]
+  };
+};
+
 // Create a function that generates config based on environment
 module.exports = (env, argv) => {
   const isDevelopment = argv.mode === 'development';
@@ -110,16 +131,22 @@ module.exports = (env, argv) => {
     plugins: [
       // Generate HTML files for each entry point
       ...Object.keys(entries).map(entryName => {
-        // Derive a human-readable title from the entry/tool name
-        const title = entryName === 'json' ? 'JSON Viewer' :
-                      entryName === 'urls' ? 'URL Extractor' :
-                      entryName.charAt(0).toUpperCase() + entryName.slice(1);
+        // Get metadata for this tool (convert back to original case for directory lookup)
+        const originalToolName = Object.keys(entries).find(key => key.toLowerCase() === entryName) || entryName;
+        const toolDirName = fs.readdirSync(path.join(__dirname, 'src/tools'), { withFileTypes: true })
+          .filter(dirent => dirent.isDirectory())
+          .find(dirent => dirent.name.toLowerCase() === entryName)?.name || entryName;
+        const metadata = getToolMetadata(toolDirName);
         return new HtmlWebpackPlugin({
           template: './template.html',
           filename: `${entryName}/index.html`,
           chunks: [entryName],
           inject: true,
-          templateParameters: { title }
+          templateParameters: { 
+            title: metadata.title,
+            description: metadata.description,
+            keywords: metadata.keywords.join(', ')
+          }
         })
       })
     ],
