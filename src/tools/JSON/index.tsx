@@ -1,5 +1,5 @@
 import '@/styles/globals.css';
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { ArrowUpDown, Search, Check, ChevronLeft, ChevronRight, Copy, AlertTriangle, PlusCircle, MinusCircle } from 'lucide-react';
@@ -27,7 +27,8 @@ const isValidUrl = (string: string): boolean => {
 const JsonNode = ({ data, level, searchTerm, expanded, toggleExpand, path, onPathClick, selectedPath }) => {
   const [isSorted, setIsSorted] = useState(false);
   const isExpanded = expanded.has(path);
-  const indent = "ml-4";
+  // Use minimal indentation to prevent horizontal overflow with deep nesting
+  const indent = "pl-3";
 
   const toggleSort = (e) => {
     e.stopPropagation();
@@ -370,6 +371,14 @@ const JSONViewer: React.FC = () => {
     }
   }, [inputJson]);
 
+  // Live-parse on input changes with debounce for better UX
+  useEffect(() => {
+    const handle = setTimeout(() => {
+      parseJson();
+    }, 250);
+    return () => clearTimeout(handle);
+  }, [inputJson, parseJson]);
+
   const toggleExpand = (path: string) => {
     const newExpanded = new Set(expanded);
     if (newExpanded.has(path)) {
@@ -437,7 +446,6 @@ const JSONViewer: React.FC = () => {
             ref={textareaRef}
             value={inputJson}
             onChange={(e) => setInputJson(e.target.value)}
-            onBlur={parseJson}
             placeholder="Paste your JSON here..."
             className="w-full h-40 p-2 mb-4 font-mono text-sm border rounded resize-none dark:bg-gray-800 dark:border-gray-700"
           />
