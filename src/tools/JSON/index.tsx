@@ -27,8 +27,8 @@ const isValidUrl = (string: string): boolean => {
 const JsonNode = ({ data, level, searchTerm, expanded, toggleExpand, path, onPathClick, selectedPath }) => {
   const [isSorted, setIsSorted] = useState(false);
   const isExpanded = expanded.has(path);
-  // Reduce left margin per nesting level to avoid excessive horizontal overflow
-  const indent = "ml-2";
+  // Use minimal indentation to prevent horizontal overflow with deep nesting
+  const indent = "pl-3";
 
   const toggleSort = (e) => {
     e.stopPropagation();
