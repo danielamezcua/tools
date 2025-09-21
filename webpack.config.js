@@ -109,14 +109,19 @@ module.exports = (env, argv) => {
     },
     plugins: [
       // Generate HTML files for each entry point
-      ...Object.keys(entries).map(entryName => 
-        new HtmlWebpackPlugin({
+      ...Object.keys(entries).map(entryName => {
+        // Derive a human-readable title from the entry/tool name
+        const title = entryName === 'json' ? 'JSON Viewer' :
+                      entryName === 'urls' ? 'URL Extractor' :
+                      entryName.charAt(0).toUpperCase() + entryName.slice(1);
+        return new HtmlWebpackPlugin({
           template: './template.html',
-          filename: `${entryName}/index.html`, // Changed to output in subdirectories
+          filename: `${entryName}/index.html`,
           chunks: [entryName],
-          inject: true
+          inject: true,
+          templateParameters: { title }
         })
-      )
+      })
     ],
     resolve: {
       extensions: ['.ts', '.tsx', '.js', '.jsx'],
