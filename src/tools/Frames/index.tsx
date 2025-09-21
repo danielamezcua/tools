@@ -303,8 +303,8 @@ const Frames: React.FC = () => {
 
   return (
     <div className="dark flex items-center justify-center min-h-screen bg-background p-4">
-      <Card className="w-full max-w-3xl flex flex-col max-h-[90vh]">
-        <CardContent className="flex flex-col gap-4 items-center">
+      <Card className="w-full max-w-3xl flex flex-col max-h-[90vh]"> 
+        <CardContent className="flex flex-col gap-4 items-center pt-6">
           <canvas
             ref={canvasRef}
             className="rounded-md border border-border bg-black shadow-inner"
