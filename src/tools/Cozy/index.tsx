@@ -22,7 +22,10 @@ type Comet = {
 
 const CozySky: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const moonAngleRef = useRef<number>(0);
+  const rotXRef = useRef<number>(0);
+  const rotYRef = useRef<number>(0);
+  const draggingRef = useRef<boolean>(false);
+  const lastMouseRef = useRef<{ x: number; y: number } | null>(null);
   const mouseRef = useRef<{ x: number; y: number; active: boolean }>({ x: 0, y: 0, active: false });
 
   const grid = useMemo(() => ({ w: 160, h: 90 }), []); // 16:9 logical pixels
@@ -54,8 +57,8 @@ const CozySky: React.FC = () => {
       r: Math.floor(Math.min(grid.w, grid.h) * 0.22)
     };
 
-    // Precompute crater seeds (relative offsets)
-    type Crater = { ox: number; oy: number; r: number };
+    // Precompute crater seeds on unit hemisphere (3D)
+    type Crater = { vx: number; vy: number; vz: number; r: number };
     const craters: Crater[] = (() => {
       const out: Crater[] = [];
       const rand = (seed: number) => {
@@ -68,12 +71,14 @@ const CozySky: React.FC = () => {
       const r = rand(1337);
       const count = 10;
       for (let i = 0; i < count; i++) {
-        const angle = r() * Math.PI * 2;
-        const radius = moon.r * (0.15 + r() * 0.6);
-        const ox = Math.cos(angle) * radius;
-        const oy = Math.sin(angle) * radius;
+        const phi = r() * Math.PI * 2; // 0..2pi
+        const cosTheta = r(); // 0..1 for hemisphere (z = cosTheta)
+        const sinTheta = Math.sqrt(Math.max(0, 1 - cosTheta * cosTheta));
+        const vx = sinTheta * Math.cos(phi);
+        const vy = sinTheta * Math.sin(phi);
+        const vz = cosTheta; // facing camera
         const rr = Math.max(1, Math.floor(2 + r() * 3));
-        out.push({ ox, oy, r: rr });
+        out.push({ vx, vy, vz, r: rr });
       }
       return out;
     })();
@@ -104,21 +109,30 @@ const CozySky: React.FC = () => {
           }
         }
       }
-      // Craters (simple darker spots)
-      const ang = moonAngleRef.current;
-      const cosA = Math.cos(ang);
-      const sinA = Math.sin(ang);
+      // Craters (simple darker spots), rotated as if on a 3D sphere
+      const rx = rotXRef.current;
+      const ry = rotYRef.current;
+      const cosX = Math.cos(rx), sinX = Math.sin(rx);
+      const cosY = Math.cos(ry), sinY = Math.sin(ry);
       for (const c of craters) {
-        // Rotate offset and translate
-        const cx = Math.floor(moon.cx + c.ox * cosA - c.oy * sinA);
-        const cy = Math.floor(moon.cy + c.ox * sinA + c.oy * cosA);
-        for (let y = cy - c.r; y <= cy + c.r; y++) {
-          for (let x = cx - c.r; x <= cx + c.r; x++) {
+        // Apply rotation Rx then Ry to crater normal vector
+        const y1 = c.vy * cosX - c.vz * sinX;
+        const z1 = c.vy * sinX + c.vz * cosX;
+        const x2 = c.vx * cosY + z1 * sinY;
+        const z2 = -c.vx * sinY + z1 * cosY;
+        const y2 = y1;
+        if (z2 <= 0) continue; // back side
+        const cx = Math.floor(moon.cx + x2 * moon.r);
+        const cy = Math.floor(moon.cy + y2 * moon.r);
+        const scale = 0.6 + 0.4 * z2; // foreshorten toward rim
+        const rr = Math.max(1, Math.floor(c.r * scale));
+        for (let y = cy - rr; y <= cy + rr; y++) {
+          for (let x = cx - rr; x <= cx + rr; x++) {
             if (x < 0 || y < 0 || x >= grid.w || y >= grid.h) continue;
             const dx = x - cx;
             const dy = y - cy;
-            if (dx * dx + dy * dy <= c.r * c.r && insideMoon(x, y)) {
-              const edge = Math.abs(Math.sqrt(dx * dx + dy * dy) - c.r) < 0.8;
+            if (dx * dx + dy * dy <= rr * rr && insideMoon(x, y)) {
+              const edge = Math.abs(Math.sqrt(dx * dx + dy * dy) - rr) < 0.8;
               bctx.globalAlpha = edge ? 0.35 : 0.25;
               bctx.fillStyle = edge ? '#bfbfbb' : '#cfcfcb';
               bctx.fillRect(x, y, 1, 1);
@@ -300,14 +314,25 @@ const CozySky: React.FC = () => {
       const rect = canvas.getBoundingClientRect();
       const sx = grid.w / rect.width;
       const sy = grid.h / rect.height;
-      mouseRef.current.x = (e.clientX - rect.left) * sx;
-      mouseRef.current.y = (e.clientY - rect.top) * sy;
+      const gx = (e.clientX - rect.left) * sx;
+      const gy = (e.clientY - rect.top) * sy;
+      mouseRef.current.x = gx;
+      mouseRef.current.y = gy;
       mouseRef.current.active = true;
+      if (draggingRef.current && lastMouseRef.current) {
+        const dx = gx - lastMouseRef.current.x;
+        const dy = gy - lastMouseRef.current.y;
+        rotYRef.current += dx * 0.02; // horizontal drag rotates around Y
+        rotXRef.current += -dy * 0.02; // vertical drag rotates around X
+        lastMouseRef.current = { x: gx, y: gy };
+      }
     };
     const handleMouseLeave = () => {
       mouseRef.current.active = false;
+      draggingRef.current = false;
+      lastMouseRef.current = null;
     };
-    const handleClick = (e: MouseEvent) => {
+    const handleMouseDown = (e: MouseEvent) => {
       const rect = canvas.getBoundingClientRect();
       const sx = grid.w / rect.width;
       const sy = grid.h / rect.height;
@@ -316,20 +341,27 @@ const CozySky: React.FC = () => {
       const dx = x - moon.cx;
       const dy = y - moon.cy;
       if (dx * dx + dy * dy <= moon.r * moon.r) {
-        moonAngleRef.current += Math.PI / 12; // rotate ~15° per click
+        draggingRef.current = true;
+        lastMouseRef.current = { x, y };
       }
+    };
+    const handleMouseUp = () => {
+      draggingRef.current = false;
+      lastMouseRef.current = null;
     };
 
     canvas.addEventListener('mousemove', handleMouseMove);
     canvas.addEventListener('mouseleave', handleMouseLeave);
-    canvas.addEventListener('click', handleClick);
+    canvas.addEventListener('mousedown', handleMouseDown);
+    window.addEventListener('mouseup', handleMouseUp);
 
     raf = requestAnimationFrame(loop);
     return () => {
       cancelAnimationFrame(raf);
       canvas.removeEventListener('mousemove', handleMouseMove);
       canvas.removeEventListener('mouseleave', handleMouseLeave);
-      canvas.removeEventListener('click', handleClick);
+      canvas.removeEventListener('mousedown', handleMouseDown);
+      window.removeEventListener('mouseup', handleMouseUp);
     };
   }, [grid]);
 
